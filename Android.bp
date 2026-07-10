@@ -23,10 +23,3 @@ cc_binary {
     relative_install_path: "bin",
     stem: "keepalived",
 }
-
-selinux_policy {
-    name: "keepalived-sepolicy",
-    srcs: ["selinux/keepalived.te"],
-    file_contexts: ["selinux/file_contexts"],
-    policy_version: "29",
-}
