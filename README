@@ -1,0 +1,14 @@
+# 检查服务是否存活
+keepalived_ctl PING
+
+# 获取服务状态
+keepalived_ctl STATUS
+
+# 设置保活间隔为5秒
+keepalived_ctl SET_INTERVAL 5
+
+# 获取保活计数器
+keepalived_ctl COUNTER
+
+# 查看帮助
+keepalived_ctl HELP
