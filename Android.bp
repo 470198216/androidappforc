@@ -48,3 +48,16 @@ cc_binary {
     relative_install_path: "bin",
     stem: "keepalived_ctl",
 }
+
+java_library {
+    name: "com.android.system.keepalive",
+    srcs: ["java/com/android/system/**/*.java"],
+    aidl: ["aidl/com/android/system/**/*.aidl"],
+    sdk_version: "core_platform",
+    system_modules: "core-platform-api",
+    libs: [
+        "framework",
+        "android.system",
+    ],
+    install_path: "framework",
+}

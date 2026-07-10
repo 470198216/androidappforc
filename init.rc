@@ -4,5 +4,13 @@ service keepalived /system/bin/keepalived
     group root
     disabled
 
+service keepalived_service /system/bin/app_process /system/framework/com.android.system.keepalive.jar com.android.system.KeepAliveServiceManager
+    class main
+    user system
+    group system
+    disabled
+    oneshot
+
 on property:sys.boot_completed=1
     start keepalived
+    start keepalived_service
