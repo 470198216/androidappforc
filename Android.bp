@@ -1,0 +1,32 @@
+cc_binary {
+    name: "keepalived",
+    srcs: ["main.c"],
+    init_rc: ["init.rc"],
+    cflags: [
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-O2",
+        "-DANDROID",
+    ],
+    target: {
+        android: {
+            enabled: true,
+            cflags: [
+                "-D__ANDROID_API__=35",
+            ],
+        },
+    },
+    shared_libs: ["liblog"],
+    static_libs: [],
+    include_dirs: [],
+    relative_install_path: "bin",
+    stem: "keepalived",
+}
+
+selinux_policy {
+    name: "keepalived-sepolicy",
+    srcs: ["selinux/keepalived.te"],
+    file_contexts: ["selinux/file_contexts"],
+    policy_version: "29",
+}

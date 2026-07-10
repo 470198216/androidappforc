@@ -1,0 +1,22 @@
+type keepalived, domain;
+type keepalived_exec, exec_type, file_type;
+
+init_daemon_domain(keepalived)
+
+allow keepalived self:process { fork setpgid };
+allow keepalived self:capability { setgid setuid };
+allow keepalived self:unix_stream_socket create_socket_perms;
+allow keepalived self:netlink_kobject_uevent_socket create_socket_perms;
+
+allow keepalived logd_socket:sock_file write;
+allow keepalived system_prop:property_service set;
+
+allow keepalived rootfs:dir search;
+allow keepalived sysfs:dir search;
+allow keepalived proc:dir search;
+
+allow keepalived zygote:process sigchld;
+
+optional_policy(`
+    allow keepalived shell_exec:file rx_file_perms;
+')
