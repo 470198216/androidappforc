@@ -23,3 +23,28 @@ cc_binary {
     relative_install_path: "bin",
     stem: "keepalived",
 }
+
+cc_binary {
+    name: "keepalived_ctl",
+    srcs: ["keepalived_ctl.c"],
+    cflags: [
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-O2",
+        "-DANDROID",
+    ],
+    target: {
+        android: {
+            enabled: true,
+            cflags: [
+                "-D__ANDROID_API__=35",
+            ],
+        },
+    },
+    shared_libs: [],
+    static_libs: [],
+    include_dirs: [],
+    relative_install_path: "bin",
+    stem: "keepalived_ctl",
+}

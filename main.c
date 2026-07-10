@@ -2,9 +2,13 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/select.h>
+#include <sys/un.h>
 #include <signal.h>
 #include <time.h>
 #include <string.h>
+#include <errno.h>
 #include <stdarg.h>
 #include <android/log.h>
 
@@ -14,9 +18,14 @@
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
-#define KEEP_ALIVE_INTERVAL 3
+#define KEEP_ALIVE_INTERVAL_DEFAULT 3
+#define SOCKET_PATH "/dev/socket/keepalived"
+#define MAX_CLIENTS 5
+#define BUFFER_SIZE 1024
 
 static int running = 1;
+static int keep_alive_interval = KEEP_ALIVE_INTERVAL_DEFAULT;
+static int keep_alive_counter = 0;
 
 void signal_handler(int sig) {
     switch (sig) {
@@ -30,26 +39,119 @@ void signal_handler(int sig) {
     }
 }
 
+void send_response(int client_fd, const char *format, ...) {
+    va_list args;
+    char buffer[BUFFER_SIZE];
+    
+    va_start(args, format);
+    vsnprintf(buffer, BUFFER_SIZE - 1, format, args);
+    va_end(args);
+    
+    strcat(buffer, "\n");
+    write(client_fd, buffer, strlen(buffer));
+}
+
+void handle_command(int client_fd, const char *command) {
+    char cmd[BUFFER_SIZE];
+    char arg[BUFFER_SIZE];
+    
+    sscanf(command, "%s %s", cmd, arg);
+    
+    LOGD("Received command: %s", cmd);
+    
+    if (strcmp(cmd, "PING") == 0) {
+        send_response(client_fd, "PONG");
+    } else if (strcmp(cmd, "STATUS") == 0) {
+        send_response(client_fd, "STATUS OK - PID: %d, Interval: %ds, Counter: %d", 
+                      getpid(), keep_alive_interval, keep_alive_counter);
+    } else if (strcmp(cmd, "SET_INTERVAL") == 0) {
+        int new_interval = atoi(arg);
+        if (new_interval > 0 && new_interval <= 3600) {
+            keep_alive_interval = new_interval;
+            send_response(client_fd, "SET_INTERVAL OK - New interval: %ds", new_interval);
+            LOGI("Interval changed to %d seconds", new_interval);
+        } else {
+            send_response(client_fd, "SET_INTERVAL ERROR - Invalid interval (1-3600)");
+        }
+    } else if (strcmp(cmd, "COUNTER") == 0) {
+        send_response(client_fd, "COUNTER %d", keep_alive_counter);
+    } else if (strcmp(cmd, "HELP") == 0) {
+        send_response(client_fd, "Available commands:");
+        send_response(client_fd, "  PING          - Check service alive");
+        send_response(client_fd, "  STATUS        - Show service status");
+        send_response(client_fd, "  COUNTER       - Get keep-alive counter");
+        send_response(client_fd, "  SET_INTERVAL <n> - Set interval in seconds (1-3600)");
+        send_response(client_fd, "  HELP          - Show this help");
+    } else {
+        send_response(client_fd, "ERROR - Unknown command: %s", cmd);
+    }
+}
+
 int main(int argc, char **argv) {
     struct sigaction sa;
-    
+    int server_fd = -1;
+    int client_fd;
+    fd_set read_fds;
+    struct timeval timeout;
+    time_t last_keepalive = 0;
+    char buffer[BUFFER_SIZE];
+    int ret;
+
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = signal_handler;
     sigemptyset(&sa.sa_mask);
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGINT, &sa, NULL);
 
-    LOGI("Daemon started successfully, PID: %d", getpid());
-    LOGI("Keep-alive interval: %d seconds", KEEP_ALIVE_INTERVAL);
-    LOGI("Daemon will run in background until SIGTERM/SIGINT received");
+    server_fd = 3;
 
-    int counter = 0;
+    LOGI("Daemon started successfully, PID: %d", getpid());
+    LOGI("Keep-alive interval: %d seconds", keep_alive_interval);
+    LOGI("Socket FD: %d", server_fd);
+    LOGI("Service ready to accept commands");
+
+    last_keepalive = time(NULL);
+
     while (running) {
-        counter++;
-        LOGD("Keep-alive check #%d - Service is alive and running", counter);
-        sleep(KEEP_ALIVE_INTERVAL);
+        FD_ZERO(&read_fds);
+        FD_SET(server_fd, &read_fds);
+
+        timeout.tv_sec = 1;
+        timeout.tv_usec = 0;
+
+        ret = select(server_fd + 1, &read_fds, NULL, NULL, &timeout);
+
+        if (ret < 0 && errno != EINTR) {
+            LOGE("select() failed: %s", strerror(errno));
+            continue;
+        }
+
+        if (FD_ISSET(server_fd, &read_fds)) {
+            client_fd = accept(server_fd, NULL, NULL);
+            if (client_fd < 0) {
+                LOGE("accept() failed: %s", strerror(errno));
+                continue;
+            }
+
+            memset(buffer, 0, BUFFER_SIZE);
+            ret = read(client_fd, buffer, BUFFER_SIZE - 1);
+            if (ret > 0) {
+                buffer[ret] = '\0';
+                handle_command(client_fd, buffer);
+            }
+
+            close(client_fd);
+        }
+
+        time_t now = time(NULL);
+        if (now - last_keepalive >= keep_alive_interval) {
+            keep_alive_counter++;
+            LOGD("Keep-alive check #%d - Service is alive and running", keep_alive_counter);
+            last_keepalive = now;
+        }
     }
 
+    close(server_fd);
     LOGI("Daemon stopping gracefully");
     return EXIT_SUCCESS;
 }
