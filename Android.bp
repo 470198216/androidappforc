@@ -13,7 +13,6 @@ cc_binary {
         android: {
             enabled: true,
             cflags: [
-                "-D__ANDROID_API__=35",
             ],
         },
     },
