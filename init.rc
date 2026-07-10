@@ -3,7 +3,6 @@ service keepalived /system/bin/keepalived
     user root
     group root
     disabled
-    socket keepalived stream 0666 root root
 
 on property:sys.boot_completed=1
     start keepalived

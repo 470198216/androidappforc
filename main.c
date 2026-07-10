@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <sys/un.h>
+#include <sys/stat.h>
 #include <signal.h>
 #include <time.h>
 #include <string.h>
@@ -87,6 +88,42 @@ void handle_command(int client_fd, const char *command) {
     }
 }
 
+int create_socket(const char *path) {
+    int server_fd;
+    struct sockaddr_un addr;
+    
+    unlink(path);
+    
+    server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (server_fd < 0) {
+        LOGE("Failed to create socket: %s", strerror(errno));
+        return -1;
+    }
+    
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
+    
+    if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        LOGE("Failed to bind socket to %s: %s", path, strerror(errno));
+        close(server_fd);
+        return -1;
+    }
+    
+    if (listen(server_fd, MAX_CLIENTS) < 0) {
+        LOGE("Failed to listen on socket: %s", strerror(errno));
+        close(server_fd);
+        return -1;
+    }
+    
+    if (chmod(path, 0666) < 0) {
+        LOGW("Failed to set socket permissions: %s", strerror(errno));
+    }
+    
+    LOGI("Socket created at %s, FD: %d", path, server_fd);
+    return server_fd;
+}
+
 int main(int argc, char **argv) {
     struct sigaction sa;
     int server_fd = -1;
@@ -103,11 +140,14 @@ int main(int argc, char **argv) {
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGINT, &sa, NULL);
 
-    server_fd = 3;
+    server_fd = create_socket(SOCKET_PATH);
+    if (server_fd < 0) {
+        LOGE("Failed to create socket, exiting");
+        return EXIT_FAILURE;
+    }
 
     LOGI("Daemon started successfully, PID: %d", getpid());
     LOGI("Keep-alive interval: %d seconds", keep_alive_interval);
-    LOGI("Socket FD: %d", server_fd);
     LOGI("Service ready to accept commands");
 
     last_keepalive = time(NULL);
@@ -152,6 +192,7 @@ int main(int argc, char **argv) {
     }
 
     close(server_fd);
+    unlink(SOCKET_PATH);
     LOGI("Daemon stopping gracefully");
     return EXIT_SUCCESS;
 }
